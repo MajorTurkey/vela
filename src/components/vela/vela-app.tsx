@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { GROUP_ORDER, type GroupId } from "@/lib/dash/classes";
 import { clock } from "@/lib/dash/draw";
-import { ROLLS, type ClipMeta, type RollId } from "@/lib/dash/storage";
+import { ROLLS, type ClipMeta } from "@/lib/dash/storage";
 import { useRoadEngine, type Snap } from "@/components/vela/use-road-engine";
 
 function sourceLabel(source: ClipMeta["source"]) {
@@ -72,20 +72,8 @@ function Bridge({ snap, api }: { snap: Snap; api: ReturnType<typeof useRoadEngin
           <span className="num">{snap.speed.toFixed(0)}</span>
         </div>
 
-        <p className="kicker">Roll</p>
-        <div className="pair">
-          {(["highway", "city"] as RollId[]).map((roll) => (
-            <button
-              key={roll}
-              type="button"
-              className="hw"
-              data-on={snap.settings.roll === roll && snap.source === "roll" && !snap.playingId}
-              onClick={() => api.current.pickRoll(roll)}
-            >
-              {ROLLS[roll].label}
-            </button>
-          ))}
-        </div>
+        <p className="kicker">Speed</p>
+        <p className="fine">Your speed only. A camera cannot prove how fast the other car was going.</p>
         <div className="pair">
           <button
             type="button"
@@ -132,7 +120,7 @@ function Bridge({ snap, api }: { snap: Snap; api: ReturnType<typeof useRoadEngin
         <p className="fine">
           Add Vela to your home screen for a full-screen lens on any phone. Vision stays on the device.
         </p>
-        <p className="serial">SN VELA-R1</p>
+        <p className="serial">SN VELA-R1 · ROAD · MADE BY MAJORTURKEY</p>
       </div>
     </aside>
   );
@@ -148,7 +136,7 @@ function Dailies({ snap, api }: { snap: Snap; api: ReturnType<typeof useRoadEngi
         </button>
       </div>
       {snap.clips.length === 0 ? (
-        <p className="empty">No takes on this roll. Hit the tally to record.</p>
+        <p className="empty">No takes yet. Hit the tally to record.</p>
       ) : (
         <ul className="reel">
           {snap.clips.map((clip) => (
@@ -192,7 +180,6 @@ export function VelaApp() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const gateRef = useRef<HTMLDivElement>(null);
   const { snap, api } = useRoadEngine(videoRef, gateRef);
-  const roll = ROLLS[snap.settings.roll];
 
   return (
     <main className="rig" data-rec={snap.recording} data-tune={snap.tune}>
@@ -201,7 +188,7 @@ export function VelaApp() {
           <span className={snap.recording ? "lamp live" : snap.witness ? "lamp hot" : "lamp"} />
           <div>
             <b>VELA</b>
-            <small>R1 · ROAD</small>
+            <small>MADE BY MAJORTURKEY</small>
           </div>
         </div>
         <time className="tc" dateTime={snap.timecode}>
@@ -221,12 +208,10 @@ export function VelaApp() {
         >
           <video
             ref={videoRef}
-            poster={roll.poster}
             playsInline
             muted
             autoPlay
-            loop
-            preload="auto"
+            preload="none"
           />
           <div className="overlays">
             {snap.settings.guides && !snap.playingId && (

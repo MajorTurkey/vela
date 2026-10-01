@@ -8,7 +8,14 @@ export type Box = {
   name: string;
 };
 
-export type Track = Box & { id: number; life: number };
+export type Track = Box & {
+  id: number;
+  life: number;
+  gx1: number;
+  gy1: number;
+  gx2: number;
+  gy2: number;
+};
 
 export function coverRect(cw: number, ch: number, vw: number, vh: number) {
   if (vw <= 0 || vh <= 0) return { dx: 0, dy: 0, dw: cw, dh: ch };
@@ -33,32 +40,45 @@ function iou(a: Box, b: Box) {
   return union <= 0 ? 0 : inter / union;
 }
 
+function centerGap(a: Box, b: Box) {
+  const ax = (a.x1 + a.x2) / 2;
+  const ay = (a.y1 + a.y2) / 2;
+  const bx = (b.x1 + b.x2) / 2;
+  const by = (b.y1 + b.y2) / 2;
+  const dist = Math.hypot(ax - bx, ay - by);
+  const span = Math.max(a.x2 - a.x1, b.x2 - b.x1) + Math.max(a.y2 - a.y1, b.y2 - b.y1);
+  return span <= 1 ? Infinity : dist / span;
+}
+
 export function stepTracks(prev: Track[], boxes: Box[], seq: { n: number }): Track[] {
   const used = new Set<number>();
   const next: Track[] = [];
   for (const t of prev) {
-    let best = 0.22;
+    let best = 0.2;
     let bi = -1;
     for (let i = 0; i < boxes.length; i++) {
       if (used.has(i) || boxes[i].cls !== t.cls) continue;
-      const score = iou(t, boxes[i]);
-      if (score > best) {
-        best = score;
+      const overlap = iou(t, boxes[i]);
+      const gap = centerGap(t, boxes[i]);
+      if (overlap < 0.05 && gap > 1.15) continue;
+      const rank = overlap + Math.max(0, 1.35 - gap) * 0.45;
+      if (rank > best) {
+        best = rank;
         bi = i;
       }
     }
     if (bi >= 0) {
       used.add(bi);
       const b = boxes[bi];
-      const k = 0.55;
       next.push({
-        ...b,
-        id: t.id,
-        life: 3,
-        x1: t.x1 + (b.x1 - t.x1) * k,
-        y1: t.y1 + (b.y1 - t.y1) * k,
-        x2: t.x2 + (b.x2 - t.x2) * k,
-        y2: t.y2 + (b.y2 - t.y2) * k,
+        ...t,
+        conf: b.conf,
+        name: b.name,
+        life: 6,
+        gx1: b.x1,
+        gy1: b.y1,
+        gx2: b.x2,
+        gy2: b.y2,
       });
     } else if (t.life > 1) {
       next.push({ ...t, life: t.life - 1 });
@@ -66,9 +86,22 @@ export function stepTracks(prev: Track[], boxes: Box[], seq: { n: number }): Tra
   }
   for (let i = 0; i < boxes.length; i++) {
     if (used.has(i)) continue;
-    next.push({ ...boxes[i], id: seq.n++, life: 3 });
+    const b = boxes[i];
+    next.push({ ...b, id: seq.n++, life: 6, gx1: b.x1, gy1: b.y1, gx2: b.x2, gy2: b.y2 });
   }
   return next;
+}
+
+/** Move drawn boxes toward the latest detection. Call once per frame. */
+export function easeTracks(tracks: Track[]): Track[] {
+  const k = 0.16;
+  return tracks.map((t) => ({
+    ...t,
+    x1: t.x1 + (t.gx1 - t.x1) * k,
+    y1: t.y1 + (t.gy1 - t.y1) * k,
+    x2: t.x2 + (t.gx2 - t.x2) * k,
+    y2: t.y2 + (t.gy2 - t.y2) * k,
+  }));
 }
 
 export function formatTimecode(ms: number) {

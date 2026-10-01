@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { activeClasses, emptyMeters, groupOf, type GroupId } from "@/lib/dash/classes";
-import { coverRect, formatTimecode, paintTake, stepTracks, type Track } from "@/lib/dash/draw";
+import { coverRect, easeTracks, formatTimecode, paintTake, stepTracks, type Track } from "@/lib/dash/draw";
 import { deleteTake, loadTake, saveTake } from "@/lib/dash/idb";
 import {
   defaultSettings,
@@ -208,17 +208,16 @@ export function useRoadEngine(
       geoRef.mph = null;
     };
 
-    const playRoll = (roll: RollId) => {
+    const playRoll = (_roll: RollId) => {
       if (playUrl) {
         URL.revokeObjectURL(playUrl);
         playUrl = null;
       }
       playingRef.current = null;
+      video.pause();
       video.srcObject = null;
-      video.src = ROLLS[roll].src;
-      video.loop = true;
-      video.muted = true;
-      void video.play().catch(() => {});
+      video.removeAttribute("src");
+      video.load();
     };
 
     const armLens = async (facing: "environment" | "user") => {
@@ -508,12 +507,7 @@ export function useRoadEngine(
         motionRef.prev = data;
         motionRef.value = motion;
       }
-      const base = settings.roll === "highway" ? 64 : 28;
-      const wobble = Math.sin(now / 1700) * (settings.roll === "highway" ? 3 : 5);
-      const speed =
-        sourceRef.current === "lens" && geoRef.mph != null
-          ? geoRef.mph
-          : Math.max(0, base + wobble - motion * 10);
+      const speed = sourceRef.current === "lens" && geoRef.mph != null ? geoRef.mph : 0;
 
       if (recordingRef.current) {
         paintTake(recCanvas, { video, tracks, timecode, speed });
@@ -562,6 +556,7 @@ export function useRoadEngine(
         }
       }
 
+      tracks = easeTracks(tracks);
       const counts = emptyMeters();
       const peaks = emptyMeters();
       let witness = false;
