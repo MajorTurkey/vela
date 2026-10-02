@@ -214,6 +214,14 @@ input {
   color: var(--color-tally);
 }
 
+.box.noisy {
+  opacity: 0.55;
+}
+
+.box.noisy .c {
+  border-style: dashed;
+}
+
 .box .c {
   position: absolute;
   width: 12px;

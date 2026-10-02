@@ -1,12 +1,11 @@
 import { useRef } from "react";
 import { GROUP_ORDER, type GroupId } from "@/lib/dash/classes";
 import { clock } from "@/lib/dash/draw";
-import { ROLLS, type ClipMeta } from "@/lib/dash/storage";
+import type { ClipMeta } from "@/lib/dash/storage";
 import { useRoadEngine, type Snap } from "@/components/vela/use-road-engine";
 
 function sourceLabel(source: ClipMeta["source"]) {
-  if (source === "lens") return "LENS";
-  return ROLLS[source].label;
+  return source === "lens" ? "LENS" : "LENS";
 }
 
 function stamp(ms: number) {
@@ -225,7 +224,7 @@ export function VelaApp() {
             {snap.tracks.map((t) => (
               <div
                 key={t.id}
-                className={t.hot ? "box hot" : "box"}
+                className={t.hot ? "box hot" : t.stable ? "box" : "box noisy"}
                 style={{ left: t.left, top: t.top, width: t.width, height: t.height }}
               >
                 <i className="c tl" />

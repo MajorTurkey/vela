@@ -5,11 +5,9 @@ import { deleteTake, loadTake, saveTake } from "@/lib/dash/idb";
 import {
   defaultSettings,
   loadBag,
-  ROLLS,
   saveBag,
   type Bag,
   type ClipMeta,
-  type RollId,
   type Settings,
 } from "@/lib/dash/storage";
 
@@ -18,6 +16,7 @@ export type PlacedTrack = {
   name: string;
   conf: number;
   hot: boolean;
+  stable: boolean;
   left: number;
   top: number;
   width: number;
@@ -97,6 +96,7 @@ function placeTracks(tracks: Track[], gate: HTMLElement, video: HTMLVideoElement
     name: t.name.toUpperCase(),
     conf: t.conf,
     hot: t.cls === 0,
+    stable: t.stable,
     left: frame.dx + t.x1 * sx,
     top: frame.dy + t.y1 * sy,
     width: Math.max(8, (t.x2 - t.x1) * sx),
@@ -117,7 +117,6 @@ export function useRoadEngine(
     toggleScope: () => {},
     toggleGuides: () => {},
     toggleWitness: () => {},
-    pickRoll: (_roll: RollId) => {},
     openLens: () => {},
     closeLens: () => {},
     flipFacing: () => {},
@@ -208,7 +207,7 @@ export function useRoadEngine(
       geoRef.mph = null;
     };
 
-    const playRoll = (_roll: RollId) => {
+    const playRoll = () => {
       if (playUrl) {
         URL.revokeObjectURL(playUrl);
         playUrl = null;
@@ -268,7 +267,7 @@ export function useRoadEngine(
         );
       } catch {
         sourceRef.current = "roll";
-        playRoll(settingsRef.current.roll);
+        playRoll();
         publish(
           {
             source: "roll",
@@ -284,7 +283,7 @@ export function useRoadEngine(
       stopCamera();
       sourceRef.current = "roll";
       video.srcObject = null;
-      playRoll(settingsRef.current.roll);
+      playRoll();
       publish({ source: "roll", lensState: "idle", note: "Studio roll", playingId: null }, true);
     };
 
@@ -307,7 +306,7 @@ export function useRoadEngine(
         durationMs,
         locked: recLocked,
         tags: [...tags],
-        source: sourceRef.current === "lens" ? "lens" : settingsRef.current.roll,
+        source: "lens",
         peakMotion: peakMotion,
       };
       const previous = bagRef.current.clips;
@@ -380,11 +379,6 @@ export function useRoadEngine(
       toggleGuides: () => applySettings({ ...settingsRef.current, guides: !settingsRef.current.guides }),
       toggleWitness: () =>
         applySettings({ ...settingsRef.current, witnessTake: !settingsRef.current.witnessTake }),
-      pickRoll: (roll) => {
-        applySettings({ ...settingsRef.current, roll }, ROLLS[roll].label);
-        if (sourceRef.current === "lens") closeLens();
-        else if (!playingRef.current) playRoll(roll);
-      },
       openLens: () => {
         void armLens(snapFacing());
       },
@@ -424,7 +418,7 @@ export function useRoadEngine(
       },
       stopPlayback: () => {
         playingRef.current = null;
-        playRoll(settingsRef.current.roll);
+        playRoll();
         publish({ playingId: null, note: "Studio roll" }, true);
       },
       toggleLock: (id) => {
@@ -440,7 +434,7 @@ export function useRoadEngine(
         persist();
         if (playingRef.current === id) {
           playingRef.current = null;
-          playRoll(settingsRef.current.roll);
+          playRoll();
         }
         void deleteTake(id).catch(() => {});
         publish({ clips: bagRef.current.clips, playingId: playingRef.current, note: "Take deleted" }, true);
@@ -462,7 +456,7 @@ export function useRoadEngine(
       },
       true,
     );
-    playRoll(bag.settings.roll);
+    playRoll();
 
     void import("@/lib/dash/yolo")
       .then((mod) => mod.loadDetector())
@@ -529,7 +523,7 @@ export function useRoadEngine(
           busy = true;
           const started = performance.now();
           void detector
-            .predict(video, { conf: settings.conf, iou: 0.5, classes })
+            .predict(video, { conf: Math.max(0.12, settings.conf - 0.1), iou: 0.5, classes })
             .then((result) => {
               if (dead || playingRef.current) return;
               inferMs = performance.now() - started;
@@ -542,7 +536,7 @@ export function useRoadEngine(
                 cls: b.cls,
                 name: b.name,
               }));
-              tracks = stepTracks(tracks, boxes, seq);
+              tracks = stepTracks(tracks, boxes, seq, { acquire: settings.conf, hold: Math.max(0.12, settings.conf - 0.1) });
             })
             .catch(() => {
               if (!warned) {

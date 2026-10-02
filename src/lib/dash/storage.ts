@@ -1,13 +1,10 @@
 import type { GroupId } from "@/lib/dash/classes";
 
-export type RollId = "highway" | "city";
-
 export type Settings = {
   conf: number;
   groups: Record<GroupId, boolean>;
   scope: boolean;
   guides: boolean;
-  roll: RollId;
   witnessTake: boolean;
 };
 
@@ -19,7 +16,7 @@ export type ClipMeta = {
   durationMs: number;
   locked: boolean;
   tags: string[];
-  source: "lens" | RollId;
+  source: "lens";
   peakMotion: number;
 };
 
@@ -30,17 +27,11 @@ export type Bag = {
   take: number;
 };
 
-export const ROLLS: Record<RollId, { src: string; poster: string; label: string }> = {
-  highway: { src: "/rolls/highway.mp4", poster: "/rolls/highway.jpg", label: "FREEWAY" },
-  city: { src: "/rolls/city.mp4", poster: "/rolls/city.jpg", label: "NIGHT" },
-};
-
 export const defaultSettings: Settings = {
   conf: 0.35,
   groups: { vehicles: true, people: true, riders: true, signals: true },
   scope: false,
   guides: true,
-  roll: "highway",
   witnessTake: true,
 };
 

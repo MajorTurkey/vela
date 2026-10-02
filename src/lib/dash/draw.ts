@@ -15,7 +15,13 @@ export type Track = Box & {
   gy1: number;
   gx2: number;
   gy2: number;
+  confEma: number;
+  age: number;
+  hits: number;
+  stable: boolean;
 };
+
+export type TrackGate = { acquire: number; hold: number };
 
 export function coverRect(cw: number, ch: number, vw: number, vh: number) {
   if (vw <= 0 || vh <= 0) return { dx: 0, dy: 0, dw: cw, dh: ch };
@@ -50,7 +56,24 @@ function centerGap(a: Box, b: Box) {
   return span <= 1 ? Infinity : dist / span;
 }
 
-export function stepTracks(prev: Track[], boxes: Box[], seq: { n: number }): Track[] {
+function remember(confEma: number, conf: number, hits: number, age: number, hold: number) {
+  const ema = confEma * 0.72 + conf * 0.28;
+  const nextHits = Math.min(10, hits + 1);
+  const nextAge = age + 1;
+  return {
+    confEma: ema,
+    hits: nextHits,
+    age: nextAge,
+    stable: nextAge >= 4 && nextHits >= 3 && ema >= hold,
+  };
+}
+
+export function stepTracks(
+  prev: Track[],
+  boxes: Box[],
+  seq: { n: number },
+  gate: TrackGate = { acquire: 0.35, hold: 0.25 },
+): Track[] {
   const used = new Set<number>();
   const next: Track[] = [];
   for (const t of prev) {
@@ -58,6 +81,7 @@ export function stepTracks(prev: Track[], boxes: Box[], seq: { n: number }): Tra
     let bi = -1;
     for (let i = 0; i < boxes.length; i++) {
       if (used.has(i) || boxes[i].cls !== t.cls) continue;
+      if (boxes[i].conf < gate.hold) continue;
       const overlap = iou(t, boxes[i]);
       const gap = centerGap(t, boxes[i]);
       if (overlap < 0.05 && gap > 1.15) continue;
@@ -70,24 +94,46 @@ export function stepTracks(prev: Track[], boxes: Box[], seq: { n: number }): Tra
     if (bi >= 0) {
       used.add(bi);
       const b = boxes[bi];
+      const mem = remember(t.confEma || t.conf, b.conf, t.hits || 0, t.age || 0, gate.hold);
       next.push({
         ...t,
-        conf: b.conf,
+        conf: mem.confEma,
         name: b.name,
-        life: 6,
+        life: 8,
         gx1: b.x1,
         gy1: b.y1,
         gx2: b.x2,
         gy2: b.y2,
+        ...mem,
       });
     } else if (t.life > 1) {
-      next.push({ ...t, life: t.life - 1 });
+      const hits = Math.max(0, (t.hits || 0) - 1);
+      next.push({
+        ...t,
+        life: t.life - 1,
+        hits,
+        age: (t.age || 0) + 1,
+        stable: false,
+      });
     }
   }
   for (let i = 0; i < boxes.length; i++) {
     if (used.has(i)) continue;
     const b = boxes[i];
-    next.push({ ...b, id: seq.n++, life: 6, gx1: b.x1, gy1: b.y1, gx2: b.x2, gy2: b.y2 });
+    if (b.conf < gate.acquire) continue;
+    next.push({
+      ...b,
+      id: seq.n++,
+      life: 8,
+      gx1: b.x1,
+      gy1: b.y1,
+      gx2: b.x2,
+      gy2: b.y2,
+      confEma: b.conf,
+      age: 1,
+      hits: 1,
+      stable: false,
+    });
   }
   return next;
 }
