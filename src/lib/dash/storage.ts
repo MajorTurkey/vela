@@ -1,10 +1,18 @@
 import type { GroupId } from "@/lib/dash/classes";
 
+export type RollId = "highway" | "city";
+
+export const ROLLS: Record<RollId, { src: string; poster: string; label: string; cruise: number; sway: number }> = {
+  highway: { src: "/rolls/highway.mp4", poster: "/rolls/highway.jpg", label: "FREEWAY", cruise: 64, sway: 3 },
+  city: { src: "/rolls/city.mp4", poster: "/rolls/city.jpg", label: "NIGHT", cruise: 28, sway: 5 },
+};
+
 export type Settings = {
   conf: number;
   groups: Record<GroupId, boolean>;
   scope: boolean;
   guides: boolean;
+  roll: RollId;
   witnessTake: boolean;
 };
 
@@ -16,7 +24,7 @@ export type ClipMeta = {
   durationMs: number;
   locked: boolean;
   tags: string[];
-  source: "lens";
+  source: "lens" | RollId;
   peakMotion: number;
 };
 
@@ -32,6 +40,7 @@ export const defaultSettings: Settings = {
   groups: { vehicles: true, people: true, riders: true, signals: true },
   scope: false,
   guides: true,
+  roll: "highway",
   witnessTake: true,
 };
 
@@ -43,8 +52,14 @@ export function loadBag(): Bag | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Bag>;
     if (!parsed.settings || !Array.isArray(parsed.clips)) return null;
+    const roll = parsed.settings.roll === "city" ? "city" : "highway";
     return {
-      settings: { ...defaultSettings, ...parsed.settings, groups: { ...defaultSettings.groups, ...parsed.settings.groups } },
+      settings: {
+        ...defaultSettings,
+        ...parsed.settings,
+        roll,
+        groups: { ...defaultSettings.groups, ...parsed.settings.groups },
+      },
       clips: parsed.clips,
       scene: parsed.scene || 1,
       take: parsed.take || 1,

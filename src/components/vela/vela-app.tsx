@@ -1,11 +1,12 @@
 import { useRef } from "react";
 import { GROUP_ORDER, type GroupId } from "@/lib/dash/classes";
 import { clock } from "@/lib/dash/draw";
-import type { ClipMeta } from "@/lib/dash/storage";
+import type { ClipMeta, RollId } from "@/lib/dash/storage";
+import { ROLLS } from "@/lib/dash/storage";
 import { useRoadEngine, type Snap } from "@/components/vela/use-road-engine";
 
 function sourceLabel(source: ClipMeta["source"]) {
-  return source === "lens" ? "LENS" : "LENS";
+  return source === "lens" ? "LENS" : ROLLS[source].label;
 }
 
 function stamp(ms: number) {
@@ -71,8 +72,20 @@ function Bridge({ snap, api }: { snap: Snap; api: ReturnType<typeof useRoadEngin
           <span className="num">{snap.speed.toFixed(0)}</span>
         </div>
 
-        <p className="kicker">Speed</p>
-        <p className="fine">Your speed only. A camera cannot prove how fast the other car was going.</p>
+        <p className="kicker">Roll</p>
+        <div className="pair">
+          {(Object.keys(ROLLS) as RollId[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              className="hw"
+              data-on={snap.settings.roll === id && snap.source === "roll" && !snap.playingId}
+              onClick={() => api.current.pickRoll(id)}
+            >
+              {ROLLS[id].label}
+            </button>
+          ))}
+        </div>
         <div className="pair">
           <button
             type="button"
@@ -119,7 +132,7 @@ function Bridge({ snap, api }: { snap: Snap; api: ReturnType<typeof useRoadEngin
         <p className="fine">
           Add Vela to your home screen for a full-screen lens on any phone. Vision stays on the device.
         </p>
-        <p className="serial">SN VELA-R1 · ROAD · MADE BY MAJORTURKEY</p>
+        <p className="serial">SN VELA-R1</p>
       </div>
     </aside>
   );
@@ -135,7 +148,7 @@ function Dailies({ snap, api }: { snap: Snap; api: ReturnType<typeof useRoadEngi
         </button>
       </div>
       {snap.clips.length === 0 ? (
-        <p className="empty">No takes yet. Hit the tally to record.</p>
+        <p className="empty">No takes on this roll. Hit the tally to record.</p>
       ) : (
         <ul className="reel">
           {snap.clips.map((clip) => (
@@ -187,7 +200,7 @@ export function VelaApp() {
           <span className={snap.recording ? "lamp live" : snap.witness ? "lamp hot" : "lamp"} />
           <div>
             <b>VELA</b>
-            <small>MADE BY MAJORTURKEY</small>
+            <small>R1 · ROAD</small>
           </div>
         </div>
         <time className="tc" dateTime={snap.timecode}>
@@ -207,10 +220,12 @@ export function VelaApp() {
         >
           <video
             ref={videoRef}
+            poster={ROLLS[snap.settings.roll].poster}
             playsInline
             muted
             autoPlay
-            preload="none"
+            loop={!snap.playingId}
+            preload="auto"
           />
           <div className="overlays">
             {snap.settings.guides && !snap.playingId && (
@@ -232,7 +247,7 @@ export function VelaApp() {
                 <i className="c bl" />
                 <i className="c br" />
                 <span>
-                  {t.name} {t.conf.toFixed(2)}
+                  {t.name} {t.pace != null ? t.pace : t.conf.toFixed(2)}
                 </span>
               </div>
             ))}

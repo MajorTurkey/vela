@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { activeClasses, emptyMeters, groupOf, type GroupId } from "@/lib/dash/classes";
-import { coverRect, easeTracks, formatTimecode, paintTake, stepTracks, type Track } from "@/lib/dash/draw";
+import { coverRect, formatTimecode, paintTake, projectTracks, stepTracks, type Track } from "@/lib/dash/draw";
 import { deleteTake, loadTake, saveTake } from "@/lib/dash/idb";
 import {
   defaultSettings,
   loadBag,
+  ROLLS,
   saveBag,
   type Bag,
   type ClipMeta,
+  type RollId,
   type Settings,
 } from "@/lib/dash/storage";
 
@@ -17,6 +19,7 @@ export type PlacedTrack = {
   conf: number;
   hot: boolean;
   stable: boolean;
+  pace: number | null;
   left: number;
   top: number;
   width: number;
@@ -97,6 +100,7 @@ function placeTracks(tracks: Track[], gate: HTMLElement, video: HTMLVideoElement
     conf: t.conf,
     hot: t.cls === 0,
     stable: t.stable,
+    pace: t.paceN >= 8 && t.pace != null ? Math.round(t.pace) : null,
     left: frame.dx + t.x1 * sx,
     top: frame.dy + t.y1 * sy,
     width: Math.max(8, (t.x2 - t.x1) * sx),
@@ -117,6 +121,7 @@ export function useRoadEngine(
     toggleScope: () => {},
     toggleGuides: () => {},
     toggleWitness: () => {},
+    pickRoll: (_id: RollId) => {},
     openLens: () => {},
     closeLens: () => {},
     flipFacing: () => {},
@@ -159,6 +164,7 @@ export function useRoadEngine(
     let peakMotion = 0;
     const tags = new Set<string>();
     let tracks: Track[] = [];
+    const egoRef = { mph: 64 };
     const seq = { n: 1 };
     let detector: {
       predict: (
@@ -207,16 +213,20 @@ export function useRoadEngine(
       geoRef.mph = null;
     };
 
-    const playRoll = () => {
+    const playRoll = (roll?: RollId) => {
       if (playUrl) {
         URL.revokeObjectURL(playUrl);
         playUrl = null;
       }
       playingRef.current = null;
-      video.pause();
+      const id = roll ?? settingsRef.current.roll;
+      const spec = ROLLS[id] ?? ROLLS.highway;
       video.srcObject = null;
-      video.removeAttribute("src");
-      video.load();
+      video.src = spec.src;
+      video.loop = true;
+      video.muted = true;
+      video.poster = spec.poster;
+      void video.play().catch(() => {});
     };
 
     const armLens = async (facing: "environment" | "user") => {
@@ -306,7 +316,7 @@ export function useRoadEngine(
         durationMs,
         locked: recLocked,
         tags: [...tags],
-        source: "lens",
+        source: sourceRef.current === "lens" ? "lens" : settingsRef.current.roll,
         peakMotion: peakMotion,
       };
       const previous = bagRef.current.clips;
@@ -379,6 +389,11 @@ export function useRoadEngine(
       toggleGuides: () => applySettings({ ...settingsRef.current, guides: !settingsRef.current.guides }),
       toggleWitness: () =>
         applySettings({ ...settingsRef.current, witnessTake: !settingsRef.current.witnessTake }),
+      pickRoll: (roll) => {
+        applySettings({ ...settingsRef.current, roll }, ROLLS[roll].label);
+        if (sourceRef.current === "lens") closeLens();
+        else if (!playingRef.current) playRoll(roll);
+      },
       openLens: () => {
         void armLens(snapFacing());
       },
@@ -501,7 +516,13 @@ export function useRoadEngine(
         motionRef.prev = data;
         motionRef.value = motion;
       }
-      const speed = sourceRef.current === "lens" && geoRef.mph != null ? geoRef.mph : 0;
+      const roll = ROLLS[settings.roll] ?? ROLLS.highway;
+      const sway = Math.sin(now / 1700) * roll.sway;
+      const speed =
+        sourceRef.current === "lens" && geoRef.mph != null
+          ? geoRef.mph
+          : Math.max(0, roll.cruise + sway - motion * 10);
+      egoRef.mph = speed;
 
       if (recordingRef.current) {
         paintTake(recCanvas, { video, tracks, timecode, speed });
@@ -536,7 +557,15 @@ export function useRoadEngine(
                 cls: b.cls,
                 name: b.name,
               }));
-              tracks = stepTracks(tracks, boxes, seq, { acquire: settings.conf, hold: Math.max(0.12, settings.conf - 0.1) });
+              tracks = stepTracks(
+                tracks,
+                boxes,
+                seq,
+                { acquire: settings.conf, hold: Math.max(0.12, settings.conf - 0.1) },
+                performance.now(),
+                egoRef.mph,
+                video.videoHeight || 720,
+              );
             })
             .catch(() => {
               if (!warned) {
@@ -550,7 +579,7 @@ export function useRoadEngine(
         }
       }
 
-      tracks = easeTracks(tracks);
+      tracks = projectTracks(tracks, now);
       const counts = emptyMeters();
       const peaks = emptyMeters();
       let witness = false;
